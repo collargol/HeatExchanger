@@ -8,6 +8,7 @@ from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 import time
 import datetime
 import threading
+import _thread
 import logging
 
 logging.basicConfig()
@@ -22,22 +23,24 @@ def print_time(timestamp):
     print(datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S'))
 
 
-class DataBlock(ModbusSparseDataBlock):
+class HoldingRegisterDataBlock(ModbusSparseDataBlock):
 
     def __init__(self, values):
-        super(DataBlock, self).__init__(values)
-        self.time = 0
+        super(HoldingRegisterDataBlock, self).__init__(values)
+        self.timestamp = 0
         self.__time_callback__ = None
 
     def setValues(self, address, values):
-        super(DataBlock, self).setValues(address, values)
-
+        super(HoldingRegisterDataBlock, self).setValues(address, values)
         if address == time_address:
-            self.time = self.__calculate_timestamp__(values)
-            self.__time_callback__(self.time)
+            self.timestamp = self.__calculate_timestamp__(values)
+            _thread.start_new_thread(self.time_callback, (self.timestamp, ))
 
     def set_time_callback(self, function):
-        self.__time_callback__ = function
+        self.time_callback = function
+
+    def get_time(self):
+        return self.timestamp
 
     @staticmethod
     def __calculate_timestamp__(register_values):
@@ -46,26 +49,15 @@ class DataBlock(ModbusSparseDataBlock):
         return (time1 << 16) | time2
 
 
-class CoilBlock(ModbusSparseDataBlock):
-
-    def setValues(self, address, values):
-        super(CoilBlock, self).setValues(address, values)
-
-
 class Server:
-    def __init__(self, address, port, block_size):
-        self.holding_register_block = DataBlock([0] * block_size)
-        self.coil_block = CoilBlock([0] * block_size)
-        self.input_register_block = ModbusSparseDataBlock([0] * block_size)
-        self.digital_input_block = ModbusSparseDataBlock([0] * block_size)
-        self.store = ModbusSlaveContext(di=self.digital_input_block,
-                                        co=self.coil_block,
-                                        hr=self.holding_register_block,
-                                        ir=self.input_register_block)
+    def __init__(self, address, port):
+        self.holding_register_block = HoldingRegisterDataBlock.create()
+        self.coil_block = ModbusSparseDataBlock.create()
+        self.input_register_block = ModbusSparseDataBlock.create()
+        self.store = ModbusSlaveContext(co=self.coil_block, hr=self.holding_register_block)
         self.context = ModbusServerContext(slaves=self.store, single=True)
         self.server = ModbusTcpServer(self.context, address=(address, port))
         self.thread = threading.Thread(target=self.__run_thread__, args=())
-        self.__time_callback__ = None
 
     def __run_thread__(self):
         self.server.serve_forever()
@@ -74,6 +66,7 @@ class Server:
         self.thread.start()
 
     def stop(self):
+        self.server.server_close()
         self.server.shutdown()
         self.thread.join()
 
@@ -83,21 +76,42 @@ class Server:
     def set_ready_flag(self):
         self.coil_block.setValues(ready_flag_address, True)
 
-# set proper IP address and port number!
+    def get_time(self):
+        return self.holding_register_block.get_time()
+
+# starting server
+# set proper IP address and port number:
 server = Server("", 502, 1000)
+# set callback function
 server.set_time_callback(print_time)
 server.run()
-print("Server's running...")
+print('Server is running...')
+
+#
+# if some setup will be necessary it should be placed here I think...
+#
 
 close = False
 while not close:
     try:
-        time.sleep(0.001)
+        # getting actual time
+        print('Reading time value...')
+        current_time_value = server.get_time()
+        print('Current time value: ' + str(current_time_value))
+        #
+        # model simulation should be performed here
+        # receiving data from other systems should also be placed here (data for simulation)
+        #
+        time.sleep(0.5)
+        # setting this flag is crucial for time provider!
         server.set_ready_flag()
     except KeyboardInterrupt:
-        print("Interruption from keyboard occurred")
+        print('Interruption from keyboard occurred')
         close = True
+try:
+    server.stop()
+    print('Server stopped')
+except:
+    print('Issues while closing server')
 
-server.stop()
-print("Server stopped")
 
