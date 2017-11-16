@@ -38,7 +38,7 @@ while not close:
         print('reading values...')
         watchmaker.set_values(server.read_values())
         print('calculating new values...')
-        watchmaker.calculate_values_to_send()
+        # watchmaker.calculate_values_to_send() # calculating values only when watchmaker is ready!
         # timeValue = server.get_time()
         # print(server.holding_register_block.getValues(300))
         # print(server.holding_register_block.getValues(301))

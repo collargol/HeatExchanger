@@ -214,7 +214,8 @@ class Watchmaker:
         delta_t = 1.0;
         T_zco_temp = self.T_zco + delta_t * (((-self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zco - self.T_pco) + (self.k_w / (self.M_m * self.c_wym)) * (self.T_pm - self.T_zco))
         T_pm_temp = self.T_pm + delta_t * (((self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zm - self.T_pm) + (-self.k_w / (self.M_m * self.c_wym)) * (self.T_pm - self.T_zco))
-        self.T_zco = T_zco_temp * 100
+        # self.T_zco = T_zco_temp * 100
+        self.T_zco += 1
         self.T_pm = T_pm_temp * 100
 
     def keep_connecting(self):
@@ -273,6 +274,7 @@ class Watchmaker:
         try:
             if self.ready_to_send:
                 print('Values can be send')
+                self.calculate_values_to_send()
                 for receiver in self.receivers:
                     # if not receiver.connected():
                     #     continue
