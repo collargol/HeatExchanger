@@ -26,7 +26,7 @@ def print_time(timestamp):
     print('yoo!')
     print(datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S'))
 
-value_address = 201
+value_address = 300
 time_address = 1
 ready_flag_address = 1
 
@@ -37,17 +37,18 @@ class HoldingRegisterDataBlock(ModbusSparseDataBlock):
         super(HoldingRegisterDataBlock, self).__init__(values)
         self.timestamp = 0
         self.time_callback = None
-        self.value_callback = None
+        self.value_callback = 300
 
     def setValues(self, address, values):
         super(HoldingRegisterDataBlock, self).setValues(address, values)
         if address == time_address:
+            print('Time changed!')
             t = threading.Thread(target=self.time_callback)
             t.start()
-        elif address == value_address:
+        elif address == value_address or address == value_address + 1:
             print('Value changed!')
-            t = threading.Thread(target=self.value_callback, args=(address,))
-            t.start()
+            # t = threading.Thread(target=self.value_callback, args=(address,))
+            # t.start()
 
     def set_time_callback(self, function):
         self.time_callback = function
@@ -108,6 +109,9 @@ class Server:
         values.append(self.holding_register_block.getValues(301)[0])  # F_zm
         values.append(self.holding_register_block.getValues(103)[0])  # T_zm
         values.append(self.holding_register_block.getValues(101)[0])  # T_o
+        ts = HoldingRegisterDataBlock.__calculate_timestamp__([self.holding_register_block.getValues(1)[0], self.holding_register_block.getValues(2)[0]])
+        values.append(ts)                                             # time
+
         # values.append(self.holding_register_block.getValues(302))   # T_pco
         # values.append(self.holding_register_block.getValues(300))   # F_zm
         # values.append(self.holding_register_block.getValues(102))  # T_zm
@@ -166,6 +170,7 @@ class Receiver(ModbusTcpClient):
 
     def write_value(self, address, value):
         self.write_registers(address, value)
+        self.initialization = False
 
 
 class Watchmaker:
@@ -186,9 +191,12 @@ class Watchmaker:
         self.F_zm = 0
         self.T_zm = 0
         self.T_o = 0
+        self.time = 0
+        self.time_previous = 0
+        self.time_actual = 0
         # values to send
         self.T_zco = 15 * 100
-        self.T_pm = 15 * 100
+        self.T_pm = 15 * 100    # should be const?
         # constants
         self.M_m = 3000
         self.M_co = 3000
@@ -196,6 +204,7 @@ class Watchmaker:
         self.c_w = 4200
         self.rho = 1000
         self.k_w = 250000
+        self.F_zco = 0.035
         # F_zm = ???
 
     def set_boost_factor(self, factor):
@@ -205,17 +214,20 @@ class Watchmaker:
         self.receivers.append(receiver)
 
     def set_values(self, values):
-        self.T_pco = values[0]  # scaling here?
+        self.T_pco = values[0]  # scaling here? probably /100
         self.F_zm = values[1] / 1000000
         self.T_zm = values[2] / 100
         self.T_o = values[3] / 100
+        self.time = values[4]
 
     def calculate_values_to_send(self):
-        delta_t = 1.0;
-        T_zco_temp = self.T_zco + delta_t * (((-self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zco - self.T_pco) + (self.k_w / (self.M_m * self.c_wym)) * (self.T_pm - self.T_zco))
-        T_pm_temp = self.T_pm + delta_t * (((self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zm - self.T_pm) + (-self.k_w / (self.M_m * self.c_wym)) * (self.T_pm - self.T_zco))
-        # self.T_zco = T_zco_temp * 100
-        self.T_zco += 1
+        self.time_previous = self.time_actual
+        self.time_actual = self.time
+        delta_t = self.time_actual - self.time_previous
+        # delta_t = 1.0   # delta_t should be synchronized with timestamp ?
+        T_zco_temp = self.T_zco / 100 + delta_t * (((-self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zco / 100 - self.T_pco) + (self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
+        T_pm_temp = self.T_pm / 100 + delta_t * (((self.F_zco * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zm - self.T_pm / 100) + (-self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
+        self.T_zco = T_zco_temp * 100
         self.T_pm = T_pm_temp * 100
 
     def keep_connecting(self):
@@ -223,7 +235,7 @@ class Watchmaker:
             if not receiver.connect():
                 log_error('Error: cannot connect with ' + receiver.get_name())
         if not self.stop:
-            self.connect_timer = threading.Timer(10, self.keep_connecting) # new thread starting here for 10s
+            self.connect_timer = threading.Timer(10, self.keep_connecting)  # new thread starting every 10s
             self.connect_timer.start()
 
     def disconnect(self):
@@ -276,27 +288,36 @@ class Watchmaker:
                 print('Values can be send')
                 self.calculate_values_to_send()
                 for receiver in self.receivers:
-                    # if not receiver.connected():
-                    #     continue
-                    #
+                    if not receiver.connected():
+                        continue
+
                     print('sending to some receiver...')
+
                     if 'Building' in receiver.name:
                         print('sending to building')
-                        receiver.write_value(200, self.T_zco)
+                        receiver.write_value(200, int(self.T_zco))
                     if 'Regulator' in receiver.name:
                         print('sending to regulator')
-                        receiver.write_value(200, self.T_zco)
+                        receiver.write_value(200, int(self.T_zco))
+                    if 'Logger' in receiver.name:
+                        print('sending to logger')
+                        receiver.write_value(200, int(self.T_zco))
                     # what about T_pm value?
                     #
                 self.ready_to_send = False
-            else:
-                print('Cannot send values')
+            # else:
+               # print('Cannot send values')
+        except Exception as e:
+            print(e)
+            self.ready_to_send = False
         except ConnectionException:
             log_error('Error: Connection lost with')
         if not self.stop:
             # running new thread
-            self.sending_timer = threading.Timer(0.2, self.send_values_to_receivers)
-            self.sending_timer.start()
+            # self.sending_timer = threading.Timer(0.2, self.send_values_to_receivers)
+            # self.sending_timer.start()
+            t = threading.Thread(target=self.send_values_to_receivers)
+            t.start()
 
     def schedule_time_sending(self):
         self.sending_timer = threading.Timer(1.0 / self.boost_factor, self.detonate)
