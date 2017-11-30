@@ -7,6 +7,7 @@ from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 from threading import Thread
 import _thread
 import datetime
+import subprocess
 #
 # for client==sender
 from pymodbus.client.sync import ModbusTcpClient
@@ -184,6 +185,7 @@ class Watchmaker:
         self.boost_factor = 1.0
         self.connect_timer = None
         self.sending_timer = None
+        self.receiving_server = None
         # flag if values should be pushed do receivers
         self.ready_to_send = False
         # received values
@@ -195,8 +197,8 @@ class Watchmaker:
         self.time_previous = 0
         self.time_actual = 0
         # values to send
-        self.T_zco = 15 * 100
-        self.T_pm = 15 * 100    # should be const?
+        self.T_zco = 28800
+        self.T_pm = 28800    # should be const?
         # constants
         self.M_m = 3000
         self.M_co = 3000
@@ -205,7 +207,11 @@ class Watchmaker:
         self.rho = 1000
         self.k_w = 250000
         self.F_zco = 0.035
-        # F_zm = ???
+        # F_zm = 0.015
+        # running simulation to create file for data
+        args = ['wymiennik.exe', '0']
+        subprocess.call(args)
+
 
     def set_boost_factor(self, factor):
         self.boost_factor = factor
@@ -214,21 +220,45 @@ class Watchmaker:
         self.receivers.append(receiver)
 
     def set_values(self, values):
-        self.T_pco = values[0]  # scaling here? probably /100
-        self.F_zm = values[1] / 1000000
+        self.T_pco = values[0] / 100    # scaling here? probably /100
+        self.F_zm = values[1] / 1000000 # ????
         self.T_zm = values[2] / 100
         self.T_o = values[3] / 100
         self.time = values[4]
+        f = open('heat_exchanger_data.txt', 'r')
+        content = f.readlines()
+        f.close()
+        f = open('heat_exchanger_data.txt', 'w')
+        f.writelines([str(self.F_zco) + '\n', str(self.F_zm) + '\n', str(self.T_pco) + '\n', str(self.T_zm) + '\n'])
+        f.writelines(content[4:])
+        f.close()
 
     def calculate_values_to_send(self):
         self.time_previous = self.time_actual
         self.time_actual = self.time
-        delta_t = self.time_actual - self.time_previous
-        # delta_t = 1.0   # delta_t should be synchronized with timestamp ?
-        T_zco_temp = self.T_zco / 100 + delta_t * (((-self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zco / 100 - self.T_pco) + (self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
-        T_pm_temp = self.T_pm / 100 + delta_t * (((self.F_zco * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zm - self.T_pm / 100) + (-self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
-        self.T_zco = T_zco_temp * 100
-        self.T_pm = T_pm_temp * 100
+        delta_t = int(self.time_actual - self.time_previous)
+        args = ['wymiennik.exe', str(delta_t)]
+        subprocess.call(args)
+        f = open('heat_exchanger_data.txt', 'r')
+        content = f.readlines()
+        f.close()
+        self.T_pm = int(100 * float(content[4]))
+        self.T_zco = int(100 * float(content[5]))
+        '''
+        if delta_t > 1000:
+            print('Program works slow af')
+            delta_t = 1.0
+        print('delta: ' + str(delta_t))
+        dt = 1.0
+        for i in range(int(delta_t)):
+            # should replace dt by delta_t
+            T_zco_temp = self.T_zco / 100 + dt * (((-self.F_zm * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zco / 100 - self.T_pco) + (self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
+            T_pm_temp = self.T_pm / 100 + dt * (((self.F_zco * self.rho * self.c_w) / (self.M_m * self.c_wym)) * (self.T_zm - self.T_pm / 100) + (-self.k_w / (self.M_m * self.c_wym)) * (self.T_pm / 100 - self.T_zco / 100))
+            self.T_zco = int(round(T_zco_temp * 100))
+            # self.T_zco += 1       # to connection tests only
+            self.T_pm = int(round(T_pm_temp * 100))
+        print(self.T_zco)
+        '''
 
     def keep_connecting(self):
         for receiver in self.receivers:
@@ -279,32 +309,33 @@ class Watchmaker:
 
     def server_ready_to_send(self):
         print('callback called!')
-
         self.ready_to_send = True
 
     def send_values_to_receivers(self):
         try:
+            self.set_values(self.receiving_server.read_values())
             if self.ready_to_send:
                 print('Values can be send')
                 self.calculate_values_to_send()
                 for receiver in self.receivers:
                     if not receiver.connected():
                         continue
-
                     print('sending to some receiver...')
 
                     if 'Building' in receiver.name:
-                        print('sending to building')
+                        print('sending to ' + receiver.name)
                         receiver.write_value(200, int(self.T_zco))
                     if 'Regulator' in receiver.name:
-                        print('sending to regulator')
+                        print('sending to ' + receiver.name)
                         receiver.write_value(200, int(self.T_zco))
                     if 'Logger' in receiver.name:
-                        print('sending to logger')
+                        print('sending to ' + receiver.name)
                         receiver.write_value(200, int(self.T_zco))
+                        # receiver.write_value(   , int(self.T_pm))
                     # what about T_pm value?
                     #
                 self.ready_to_send = False
+                self.receiving_server.set_ready_flag()
             # else:
                # print('Cannot send values')
         except Exception as e:
