@@ -112,7 +112,9 @@ class Server:
         values.append(self.holding_register_block.getValues(101)[0])  # T_o
         ts = HoldingRegisterDataBlock.__calculate_timestamp__([self.holding_register_block.getValues(1)[0], self.holding_register_block.getValues(2)[0]])
         values.append(ts)                                             # time
-
+        if min(values) == 0:
+            print('Some value is 0!')
+            print(str(values.index(min(values))))
         # values.append(self.holding_register_block.getValues(302))   # T_pco
         # values.append(self.holding_register_block.getValues(300))   # F_zm
         # values.append(self.holding_register_block.getValues(102))  # T_zm
@@ -198,7 +200,7 @@ class Watchmaker:
         self.time_actual = 0
         # values to send
         self.T_zco = 28800
-        self.T_pm = 28800    # should be const?
+        self.T_pm = 28800
         # constants
         self.M_m = 3000
         self.M_co = 3000
@@ -211,7 +213,6 @@ class Watchmaker:
         # running simulation to create file for data
         args = ['wymiennik.exe', '0']
         subprocess.call(args)
-
 
     def set_boost_factor(self, factor):
         self.boost_factor = factor
@@ -335,9 +336,9 @@ class Watchmaker:
                     # what about T_pm value?
                     #
                 self.ready_to_send = False
-                self.receiving_server.set_ready_flag()
+            self.receiving_server.set_ready_flag()
             # else:
-               # print('Cannot send values')
+                # print('Cannot send values')
         except Exception as e:
             print(e)
             self.ready_to_send = False
