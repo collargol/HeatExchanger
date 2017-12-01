@@ -82,7 +82,7 @@ void half_second_step(void){
 }
 
 static void save_heat_exchanger_state(FILE *sim_data) {
-    fprintf(sim_data,"%3.2lf\n%3.2lf\n%3.2lf\n%3.2lf\n%3.2lf\n%3.2lf\n",
+    fprintf(sim_data,"%3.5lf\n%3.5lf\n%3.5lf\n%3.5lf\n%3.5lf\n%3.5lf\n",
             heat_exchanger_U.F_zco,
             heat_exchanger_U.F_zm,
             heat_exchanger_U.T_pco,
