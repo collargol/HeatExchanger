@@ -78,7 +78,7 @@ void half_second_step(void){
     /* Step the model */
     heat_exchanger_step();
     /* Print model outputs here */
-    printf("State: %lf %lf\n", heat_exchanger_DW.t_pm_state, heat_exchanger_DW.t_zco_state);
+    // printf("State: %lf %lf\n", heat_exchanger_DW.t_pm_state, heat_exchanger_DW.t_zco_state);
 }
 
 static void save_heat_exchanger_state(FILE *sim_data) {
