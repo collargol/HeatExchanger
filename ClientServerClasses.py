@@ -112,9 +112,8 @@ class Server:
         values.append(self.holding_register_block.getValues(101)[0])  # T_o
         ts = HoldingRegisterDataBlock.__calculate_timestamp__([self.holding_register_block.getValues(1)[0], self.holding_register_block.getValues(2)[0]])
         values.append(ts)                                             # time
-        if min(values) == 0:
-            print('Some value is 0!')
-            print(str(values.index(min(values))))
+        # if min(values) == 0:
+        #     print('Some value is 0!')
         # values.append(self.holding_register_block.getValues(302))   # T_pco
         # values.append(self.holding_register_block.getValues(300))   # F_zm
         # values.append(self.holding_register_block.getValues(102))  # T_zm
@@ -176,7 +175,7 @@ class Receiver(ModbusTcpClient):
         self.initialization = False
 
 
-class Watchmaker:
+class Sender:
 
     def __init__(self):
         self.receivers = []
@@ -309,7 +308,7 @@ class Watchmaker:
             self.schedule_time_sending()    # running new thread
 
     def server_ready_to_send(self):
-        print('callback called!')
+        print('Server now ready to send')
         self.ready_to_send = True
 
     def send_values_to_receivers(self):
@@ -322,7 +321,6 @@ class Watchmaker:
                     if not receiver.connected():
                         continue
                     print('sending to some receiver...')
-
                     if 'Building' in receiver.name:
                         print('sending to ' + receiver.name)
                         receiver.write_value(200, int(self.T_zco))
@@ -332,7 +330,7 @@ class Watchmaker:
                     if 'Logger' in receiver.name:
                         print('sending to ' + receiver.name)
                         receiver.write_value(200, int(self.T_zco))
-                        # receiver.write_value(   , int(self.T_pm))
+                        receiver.write_value(202, int(self.T_pm))
                     # what about T_pm value?
                     #
                 self.ready_to_send = False

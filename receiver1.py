@@ -8,8 +8,8 @@ server = ClientServerClasses.Server('192.168.1.69', 5555)   # should be 192.168.
 server.run()
 print('Server is running')
 # creating client
-watchmaker = ClientServerClasses.Watchmaker()
-watchmaker.receiving_server = server
+sender = ClientServerClasses.Sender()
+sender.receiving_server = server
 building0 = ClientServerClasses.Receiver('192.168.1.201', 5555, 'Building Jan')
 building1 = ClientServerClasses.Receiver('192.168.1.202', 5555, 'Building Dominik')
 building2 = ClientServerClasses.Receiver('192.168.1.203', 5555, 'Building Artur')
@@ -18,19 +18,19 @@ regulator = ClientServerClasses.Receiver('192.168.1.111', 5555, 'Regulator')    
 dataLogger = ClientServerClasses.Receiver('192.168.1.222', 5555, 'Logger')
 # heatProvider = ClientServerClasses.Receiver('192.168.1.13', 5555, 'Heat provider')
 
-watchmaker.add_receiver(building0)
-watchmaker.add_receiver(building1)
-watchmaker.add_receiver(building2)
-watchmaker.add_receiver(building3)
-watchmaker.add_receiver(regulator)
-watchmaker.add_receiver(dataLogger)
-# watchmaker.add_receiver(heatProvider)
+sender.add_receiver(building0)
+sender.add_receiver(building1)
+sender.add_receiver(building2)
+sender.add_receiver(building3)
+sender.add_receiver(regulator)
+sender.add_receiver(dataLogger)
+# sender.add_receiver(heatProvider)
 
-watchmaker.keep_connecting()
-watchmaker.send_values_to_receivers()
+sender.keep_connecting()
+sender.send_values_to_receivers()
 
 # server.set_time_callback(ClientServerClasses.print_time)
-server.set_time_callback(watchmaker.server_ready_to_send)
+server.set_time_callback(sender.server_ready_to_send)
 
 #############################
 
@@ -41,7 +41,7 @@ while not close:
         # reading T_pco, F_zm, T_zm, T_o values 4 times per second and sending them to sender class
         # print('reading values...')
         # print(server.holding_register_block.getValues(301))
-        # watchmaker.set_values(server.read_values())
+        # sender.set_values(server.read_values())
         # print(server.holding_register_block.getValues(301))
         # time.sleep(0.25)
         # let know that you are ready for receive time
@@ -51,5 +51,5 @@ while not close:
 
 # remember to stop server while closing your application
 server.stop()
-watchmaker.disconnect()
+sender.disconnect()
 print('finished!')
